@@ -1,0 +1,91 @@
+
+-- ===========================================================
+-- Warby Parker Usage Funnel Analysis (SQL + Python) SQL Queries
+-- Portfolio Project #1
+-- Author: Aleks T. Mitkov
+-- Date: 2026-02-07
+-- ===========================================================
+
+-- =====================================
+-- Funnel overview and data visualization
+-- =====================================
+-- Analyze user attrition across survey questions by counting
+-- how many distinct users reached each question. This reveals
+-- where users are most likely to abandon the quiz.
+
+SELECT
+  s.question,
+  COUNT(DISTINCT s.user_id) AS users_answered,
+  ROUND(
+    100.0 * COUNT(DISTINCT s.user_id) /
+    (SELECT COUNT(DISTINCT user_id)
+     FROM survey
+     WHERE question = (
+       SELECT MIN(question) FROM survey
+     )
+    ),
+    2
+  ) AS completion_rate_pct
+FROM survey s
+GROUP BY 1
+ORDER BY 3 DESC;
+
+-- =========================
+-- A/B Test: Home Try-On Funnel
+-- =========================
+
+-- Analyze Warby Parker’s purchase funnel:
+-- Style Quiz → Home Try-On → Purchase.
+-- During the Home Try-On stage, users are split into an A/B test:
+-- 50% receive 3 pairs, 50% receive 5 pairs.
+-- The goal is to evaluate whether receiving more pairs
+-- increases the likelihood of completing a purchase.
+-- The data is districuted across three tables:
+-- quiz, home_try_on, and purchase
+
+SELECT DISTINCT
+    q.user_id,
+    CASE
+        WHEN h.user_id IS NOT NULL THEN 1
+        ELSE 0
+    END AS is_home_try_on,
+    h.number_of_pairs,
+    CASE
+        WHEN p.user_id IS NOT NULL THEN 1
+        ELSE 0
+    END AS is_purchase
+FROM quiz q
+LEFT JOIN home_try_on h
+    ON q.user_id = h.user_id
+LEFT JOIN purchase p 
+    ON p.user_id = q.user_id;
+
+-- Build a unified funnel table to compute conversion rates
+-- from Quiz → Home Try-On → Purchase.
+
+
+WITH funnel AS (
+  SELECT
+    q.user_id,
+    CASE WHEN h.user_id IS NOT NULL THEN 1 ELSE 0 END AS is_home_try_on,
+    CASE WHEN p.user_id IS NOT NULL THEN 1 ELSE 0 END AS is_purchase
+  FROM quiz q
+  LEFT JOIN home_try_on h
+    ON q.user_id = h.user_id
+  LEFT JOIN purchase p
+    ON q.user_id = p.user_id
+)
+SELECT
+  ROUND(
+    1.0 * SUM(is_home_try_on) / NULLIF(COUNT(*), 0),
+    3
+  ) AS quiz_to_home_try_on_rate,
+  ROUND(
+    1.0 * SUM(is_purchase) / NULLIF(SUM(is_home_try_on), 0),
+    3
+  ) AS home_try_on_to_purchase_rate,
+  ROUND(
+    1.0 * SUM(is_purchase) / NULLIF(COUNT(*), 0),
+    3
+  ) AS quiz_to_purchase_rate
+FROM funnel;

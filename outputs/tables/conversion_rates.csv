@@ -1,0 +1,4 @@
+metric,rate
+Quiz → Home Try-On,0.75
+Home Try-On → Purchase,0.66
+Quiz → Purchase,0.495
